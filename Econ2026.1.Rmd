@@ -131,54 +131,65 @@ library(FinTS)
 ArchTest(as.numeric(r), lags = 20)
 ```
 
+
 ##1.6
 ```{r}
 library(rugarch)
-library(FinTS)
-library(tseries)
 
-# Specification: constant mean, GARCH(1,1), normal innovations
+# 1. Define the model from equations (2)-(4)
 spec <- ugarchspec(
-  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
-  mean.model     = list(armaOrder = c(0, 0), include.mean = TRUE),
+  variance.model     = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model         = list(armaOrder = c(0, 0), include.mean = TRUE),
   distribution.model = "norm"
 )
 
-# Estimate
+# 2. Estimate it by maximum likelihood
 fit <- ugarchfit(spec = spec, data = as.numeric(r))
-fit   # prints coefficients, robust s.e., LB tests, ARCH-LM, information criteria
 
-# Parameter estimates
-coef(fit)      # mu (= phi0), omega (= alpha0), alpha1, beta1
+# 3. Parameter estimates with robust standard errors
+round(fit@fit$robust.matcoef, 4)
 
-# Persistence and unconditional variance
-a1 <- coef(fit)["alpha1"]; b1 <- coef(fit)["beta1"]; a0 <- coef(fit)["omega"]
-persistence <- a1 + b1
-uncond_var  <- a0 / (1 - persistence)
+# 4. Persistence
+persistence <- coef(fit)["alpha1"] + coef(fit)["beta1"]
 persistence
-uncond_var
-sqrt(uncond_var)
+```
 
-# Diagnostics on standardized residuals
+
+```{r}
+# Standardized residuals (estimate of v_t)
 z <- as.numeric(residuals(fit, standardize = TRUE))
 
-# 1) Autocorrelation in standardized residuals (mean equation)
-Box.test(z,   lag = 20, type = "Ljung-Box")
+# Test 1: autocorrelation in z (is the mean equation OK?)
+Box.test(z, lag = 20, type = "Ljung-Box")
 
-# 2) Remaining ARCH in squared standardized residuals (variance equation)
-Box.test(z^2, lag = 20, type = "Ljung-Box")
+# Test 2: autocorrelation in z^2 (is the variance equation OK?)
+# fitdf = 2 because 2 parameters (alpha1, beta1) were estimated in the variance
+Box.test(z^2, lag = 20, type = "Ljung-Box", fitdf = 2)
+
+# Test 3: remaining ARCH effects
 ArchTest(z, lags = 20)
 
-# 3) Normality of standardized residuals
-jarque.bera.test(z)
+# Test 4: normality
 library(moments)
 skewness(z); kurtosis(z)
-
-# Plots
-acf(z,   main = "ACF of standardized residuals")
-acf(z^2, main = "ACF of squared standardized residuals")
-qqnorm(z); qqline(z, col = "red")
-plot(sigma(fit), type = "l", main = "Estimated conditional volatility",
-     ylab = "sigma_t", xlab = "Time")
+jarque.bera.test(z)
 ```
+
+##1.7
+```{r}
+# First and last dates in the original data
+head(index(GSPC), 1)
+tail(index(GSPC), 1)
+
+# First and last dates in the return series
+head(index(r), 1)
+tail(index(r), 1)
+
+# First and last dates in the GARCH conditional variance
+head(sigma(fit), 1)
+tail(sigma(fit), 1)
+
+length(r)
+```
+
 
