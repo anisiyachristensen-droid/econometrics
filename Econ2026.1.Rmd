@@ -267,3 +267,158 @@ likelihood(fit_tgarch)
 infocriteria(fit_tgarch)
 ```
 
+##1.11-13 prework
+```{r}
+# prework
+
+# Load packages
+library(rugarch)
+library(rmgarch)
+
+# Load S&P MidCap 400 dataset
+mid_objects <- load("~/Desktop/Econ2026/MID.RData")
+
+# Inspect the object loaded from the file
+mid_objects
+
+# Extract the dataset
+MID <- get(mid_objects[1])
+
+# Identify the adjusted closing price column
+mid_col <- grep("Adjusted$", colnames(MID), value = TRUE)
+
+# Check that exactly one column was found
+stopifnot(length(mid_col) == 1)
+
+# Extract adjusted closing prices
+P_mid <- MID[, mid_col]
+
+# Remove missing values
+P_mid <- na.omit(P_mid)
+
+# Calculate log-returns
+r_mid <- 100 * diff(log(P_mid))
+
+# Remove missing values
+r_mid <- na.omit(r_mid)
+
+# Inspect returns
+summary(r_mid)
+```
+```{r}
+# Combine S&P 500 and S&P MidCap 400 returns
+returns <- merge(r, r_mid, join = "inner")
+
+# Remove observations with missing values
+returns <- na.omit(returns)
+
+# Rename columns
+colnames(returns) <- c("SP500", "MID400")
+
+# Inspect combined dataset
+head(returns)
+tail(returns)
+
+# Check dimensions
+dim(returns)
+
+# Check sample period
+start(returns)
+```
+## 1.11
+```{r}
+
+# Use the GARCH(1,1) specification from Question 1.6
+multi_spec <- multispec(list(spec, spec))
+
+# Specify DCC(1,1)
+dcc_spec <- dccspec(
+  uspec = multi_spec,
+  dccOrder = c(1, 1),
+  model = "DCC",
+  distribution = "mvnorm"
+)
+
+# Estimate the DCC(1,1) model
+dcc_fit <- dccfit(
+  spec = dcc_spec,
+  data = returns
+)
+
+# Display estimation results
+dcc_fit
+```
+
+# Question 1.12
+```{r}
+# Extract time-varying conditional correlation matrices
+dcc_cor <- rcor(dcc_fit)
+
+# Extract correlation between S&P 500 and MidCap 400
+rho <- dcc_cor[1, 2, ]
+
+# Summary statistics
+summary(rho)
+```
+```{r}
+# Convert dates to Date format
+dates <- as.Date(names(rho))
+
+# Plot conditional correlations
+plot(
+  dates, as.numeric(rho),
+  type = "l",
+  main = "DCC(1,1) Conditional Correlation",
+  xlab = "Date",
+  ylab = "Conditional correlation",
+  col = "blue"
+)
+```
+```{r}
+# Find the lowest estimated correlation
+min(rho)
+ 
+# Find the date it occurred
+names(rho)[which.min(rho)]
+```
+```{r}
+returns["2024-07-11"]
+```
+
+##1.13
+```{r}
+dcc_forecast <- dccforecast(dcc_fit, n.ahead = 1)
+
+H_forecast <- rcov(dcc_forecast)[[1]][, , 1]
+H_forecast
+```
+```{r}
+# Minimum-variance weight for the S&P 500
+w1 <- (H_forecast[2,2] - H_forecast[1,2]) /
+      (H_forecast[1,1] + H_forecast[2,2] - 2*H_forecast[1,2])
+
+# Weight for the S&P MidCap 400
+w2 <- 1 - w1
+
+# Display the weights
+c(SP500 = w1, MID400 = w2)
+```
+```{r}
+# Forecasted variance of the minimum-variance portfolio
+portfolio_variance <- w1^2 * H_forecast[1,1] +
+                      w2^2 * H_forecast[2,2] +
+                      2 * w1 * w2 * H_forecast[1,2]
+
+portfolio_variance
+```
+```{r}
+# Extract estimated conditional means
+mu <- coef(dcc_fit)[c("[SP500].mu", "[MID400].mu")]
+
+# Forecasted portfolio return
+portfolio_return <- w1 * mu[1] + w2 * mu[2]
+
+portfolio_return
+```
+
+
