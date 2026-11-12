@@ -1,0 +1,502 @@
+---
+title: "Econ2026.2"
+author: "8mart"
+date: "2026-11-10"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+# Load dataset
+load("data_var.Rdata")
+
+# Declare monthly time series
+data_var_ts <- ts(data_var,
+                  start = c(1958, 5),
+                  frequency = 12)
+
+# Verify data
+str(data_var_ts)
+start(data_var_ts)
+end(data_var_ts)
+
+# Check total number of missing values
+sum(is.na(data_var_ts))
+
+# Check missing values in each variable
+colSums(is.na(data_var_ts))
+```
+CADETBLUE4
+## 2.1
+```{r}
+# Plot all three variables
+plot(data_var_ts,
+     main = "Monthly Macroeconomic Variables",
+     xlab = "Year",
+     col = "CADETBLUE4")
+
+# Descriptive statistics
+summary(data_var_ts)
+
+# Standard deviations
+apply(data_var_ts, 2, sd)
+```
+```{r}
+library(urca)
+
+# ADF tests
+adf_y1 <- ur.df(data_var_ts[,1], type = "drift",
+                lags = 12, selectlags = "AIC")
+
+adf_y2 <- ur.df(data_var_ts[,2], type = "drift",
+                lags = 12, selectlags = "AIC")
+
+adf_y3 <- ur.df(data_var_ts[,3], type = "drift",
+                lags = 12, selectlags = "AIC")
+
+summary(adf_y1)
+summary(adf_y2)
+summary(adf_y3)
+```
+```{r}
+# KPSS tests
+summary(ur.kpss(data_var_ts[,1], type = "mu"))
+summary(ur.kpss(data_var_ts[,2], type = "mu"))
+summary(ur.kpss(data_var_ts[,3], type = "mu"))
+```
+
+## 2.2
+```{r}
+library(vars)
+
+# Calculate lag selection criteria (maximum 12 lags)
+lag_selection <- VARselect(data_var_ts,
+                           lag.max = 12,
+                           type = "const")
+
+# Display AIC and BIC for all lag lengths
+lag_selection$criteria[c("AIC(n)", "SC(n)"), ]
+
+# Display optimal lag according to AIC and BIC
+lag_selection$selection[c("AIC(n)", "SC(n)")]
+```
+```{r}
+# Display HQ and FPE for all lag lengths
+lag_selection$criteria[c("HQ(n)", "FPE(n)"), ]
+
+# Display optimal lag according to HQ and FPE
+lag_selection$selection[c("HQ(n)", "FPE(n)")]
+```
+
+## 2.3
+```{r}
+library(vars)
+
+var_model <- VAR(data_var_ts,
+                 p = 1,
+                 type = "const")
+
+summary(var_model)
+```
+
+## 2.4
+```{r}
+# Multivariate Portmanteau test
+serial_test <- serial.test(
+  var_model,
+  lags.pt = 12,
+  type = "PT.asymptotic"
+)
+
+serial_test
+```
+
+## 2.5
+```{r}
+# Multivariate ARCH-LM test using 12 lags
+arch_test_5 <- vars::arch.test(
+  var_model,
+  lags.multi = 12,
+  multivariate.only = TRUE
+)
+
+arch_test_5
+```
+```{r}
+# Question 2.5: Multivariate ARCH-LM test
+
+library(vars)
+
+arch_test <- arch.test(
+  var_model,
+  lags.multi = 6,
+  multivariate.only = TRUE
+)
+
+# Display results
+arch_test
+```
+
+## 2.6
+```{r}
+# Extract reduced-form residuals
+var_residuals <- residuals(var_model)
+# Calculate their covariance matrix
+Sigma_e <- cov(var_residuals)
+# Display the matrix
+round(Sigma_e, 4)
+```
+```{r}
+# Calculate the lower-triangular Cholesky factor
+P <- t(chol(Sigma_e))
+# Display the result
+round(P, 4)
+```
+```{r}
+# Extract reduced-form residuals
+var_residuals <- residuals(var_model)
+
+# Calculate their covariance matrix
+Sigma_e <- cov(var_residuals)
+
+# Display the matrix
+round(Sigma_e, 4)
+
+# Calculate the lower-triangular Cholesky factor
+P <- t(chol(Sigma_e))
+
+# Display the result
+round(P, 4)
+```
+```{r}
+# QUESTION 2.6 – Structural identification using Cholesky decomposition
+
+# 1. Extract the residual covariance matrix from the estimated VAR
+Sigma_e <- summary(var_model)$covres
+
+# Display the residual covariance matrix
+round(Sigma_e, 4)
+
+
+# 2. Calculate the lower-triangular Cholesky impact matrix
+P <- t(chol(Sigma_e))
+
+# Display the Cholesky matrix
+round(P, 4)
+
+
+# 3. Calculate the matrix of contemporaneous links
+B0 <- solve(P)
+
+# Display B0
+round(B0, 4)
+
+
+# 4. Normalize B0 to have ones on the diagonal
+B0_normalized <- diag(1 / diag(B0)) %*% B0
+
+# Display normalized B0
+round(B0_normalized, 4)
+```
+
+## 2.7
+```{r}
+# Ensure variable names are accessible
+var_names <- colnames(data_var_ts)
+
+# Compute IRFs for inflation (y1) and GDP growth (y2) following a shock to monetary policy (y3)
+irf_chol <- irf(
+  var_model,
+  impulse = var_names[3],          # y3: Monetary policy surprises
+  response = c(var_names[1], var_names[2]), # y1: Inflation, y2: GDP growth
+  n.ahead = 24,                    # 24-month horizon
+  ortho = TRUE,                    # Use Cholesky orthogonalization
+  boot = TRUE,                     # Bootstrap for confidence intervals
+  runs = 1000,                     # Number of bootstrap replications
+  seed = 123                       # Set seed for reproducibility
+)
+
+# Save both impulse response plots as one image
+png("IRF_Q2_7.png", width = 1200, height = 900, res = 120)
+
+plot(irf_chol,
+     plot.type = "multiple",
+     nc = 1,
+     mar.multi = c(3, 4, 2, 1),
+     oma.multi = c(3, 3, 3, 1),
+     main = "Responses to a Contractionary Monetary Policy Shock")
+
+dev.off()
+getwd()
+```
+
+## 2.9
+```{r}
+library(svars)
+
+# Estimate the GARCH-identified SVAR
+set.seed(123)
+svar_garch <- id.garch(var_model)
+
+# Display estimation and identification results
+summary(svar_garch)
+```
+
+## 2.10
+```{r}
+# Question 2.10 – GARCH impulse response functions
+
+# Identify the shock with the largest impact on monetary policy surprises
+mp_col <- which.max(abs(svar_garch$B["y3", ]))
+
+# Copy the GARCH model
+svar_mp <- svar_garch
+
+# Normalize the monetary policy shock to represent contractionary policy
+if (svar_mp$B["y3", mp_col] < 0) {
+  svar_mp$B[, mp_col] <- -svar_mp$B[, mp_col]
+}
+
+# Calculate impulse responses over months 0–24
+irf_garch <- vars::irf(svar_mp, n.ahead = 25)
+
+# Save the inflation and GDP growth responses
+png("IRF_GARCH_Q2_10.png", width = 1200, height = 800, res = 120)
+
+print(plot(irf_garch,
+           selection = list(mp_col, c(1, 2)),
+           scales = "free_y"))
+
+dev.off()
+```
+```{r}
+# Question 2.10 – Correct GARCH impulse response plots
+
+png("IRF_GARCH_Q2_10_corrected.png",
+    width = 1200, height = 800, res = 120)
+
+print(plot(
+  irf_garch,
+  selection = list(c(1, 2), mp_col),
+  scales = "free_y"
+))
+
+dev.off()
+```
+
+## 3.1 (pre)
+```{r}
+# Load the dataset
+load("data_vec.RData")
+
+# Examine the structure of the dataset
+str(data_vec)
+
+# Display the first and last observations
+head(data_vec)
+tail(data_vec)
+
+# Check the number of observations and variables
+dim(data_vec)
+```
+```{r}
+# Declare the data as monthly time series
+data_vec_ts <- ts(data_vec,
+                  start = c(1972, 1),
+                  frequency = 12)
+
+# Verify the time-series structure
+start(data_vec_ts)
+end(data_vec_ts)
+frequency(data_vec_ts)
+
+# Plot all three variables
+plot(data_vec_ts,
+     main = "Yield Curve Factors and Industrial Production",
+     xlab = "Year")
+```
+## 3.1
+```{r}
+# ADF test for the level factor (with drift)
+adf_L <- ur.df(data_vec_ts[, "L"],
+               type = "drift",
+               lags = 12,
+               selectlags = "BIC")
+
+# ADF test for the slope factor (with drift)
+adf_S <- ur.df(data_vec_ts[, "S"],
+               type = "drift",
+               lags = 12,
+               selectlags = "BIC")
+
+# ADF test for industrial production (with trend)
+adf_IP <- ur.df(data_vec_ts[, "IP"],
+                type = "trend",
+                lags = 12,
+                selectlags = "BIC")
+
+# Display the results
+summary(adf_IP)
+```
+```{r}
+summary(adf_L)
+summary(adf_S)
+```
+```{r}
+# KPSS test for the level factor
+kpss_L <- ur.kpss(data_vec_ts[, "L"],
+                  type = "mu",
+                  lags = "short")
+
+# KPSS test for the slope factor
+kpss_S <- ur.kpss(data_vec_ts[, "S"],
+                  type = "mu",
+                  lags = "short")
+
+# KPSS test for industrial production
+kpss_IP <- ur.kpss(data_vec_ts[, "IP"],
+                   type = "tau",
+                   lags = "short")
+
+# Display results
+summary(kpss_L)
+summary(kpss_S)
+summary(kpss_IP)
+```
+```{r}
+# Calculate first differences
+data_vec_diff <- diff(data_vec_ts)
+
+# ADF test for first-differenced L
+adf_dL <- ur.df(data_vec_diff[, "L"],
+                type = "drift",
+                lags = 12,
+                selectlags = "BIC")
+
+# ADF test for first-differenced S
+adf_dS <- ur.df(data_vec_diff[, "S"],
+                type = "drift",
+                lags = 12,
+                selectlags = "BIC")
+
+# ADF test for first-differenced IP
+adf_dIP <- ur.df(data_vec_diff[, "IP"],
+                 type = "drift",
+                 lags = 12,
+                 selectlags = "BIC")
+
+# Display results
+summary(adf_dL)
+summary(adf_dS)
+summary(adf_dIP)
+```
+```{r}
+# KPSS test for first-differenced L
+kpss_dL <- ur.kpss(data_vec_diff[, "L"],
+                   type = "mu",
+                   lags = "short")
+
+# KPSS test for first-differenced S
+kpss_dS <- ur.kpss(data_vec_diff[, "S"],
+                   type = "mu",
+                   lags = "short")
+
+# KPSS test for first-differenced IP
+kpss_dIP <- ur.kpss(data_vec_diff[, "IP"],
+                    type = "mu",
+                    lags = "short")
+
+# Display results
+summary(kpss_dL)
+summary(kpss_dS)
+summary(kpss_dIP)
+```
+```{r}
+# KPSS test for S in levels using a longer bandwidth
+kpss_S_long <- ur.kpss(data_vec_ts[, "S"],
+                       type = "mu",
+                       lags = "long")
+
+# KPSS test for first-differenced IP using a longer bandwidth
+kpss_dIP_long <- ur.kpss(data_vec_diff[, "IP"],
+                         type = "mu",
+                         lags = "long")
+
+# Display results
+summary(kpss_S_long)
+summary(kpss_dIP_long)
+```
+
+## 3.2
+```{r}
+# Load package
+library(vars)
+
+# Select VAR lag length
+lag_selection <- VARselect(data_vec_ts,
+                           lag.max = 12,
+                           type = "const")
+
+# Display selected lag lengths
+lag_selection$selection
+
+# Display information criteria
+lag_selection$criteria
+```
+
+```{r}
+# Johansen trace test
+johansen_trace <- ca.jo(data_vec_ts,
+                        type = "trace",
+                        ecdet = "const",
+                        K = 4,
+                        spec = "longrun")
+
+# Display results
+summary(johansen_trace)
+```
+
+```{r}
+# Johansen maximum eigenvalue test
+johansen_eigen <- ca.jo(data_vec_ts,
+                        type = "eigen",
+                        ecdet = "const",
+                        K = 4,
+                        spec = "longrun")
+
+# Display results
+summary(johansen_eigen)
+```
+```{r}
+# Estimate the restricted VEC model with rank 1
+vec_estimates <- cajorls(johansen_trace, r = 1)
+
+# Display the estimated cointegrating vector
+vec_estimates$beta
+
+# Display the VEC model coefficients
+summary(vec_estimates$rlm)
+```
+
+## 3.3
+```{r}
+# Load the package
+library(tsDyn)
+
+# Estimate the Vector Error Correction Model
+vec_model <- VECM(data_vec_ts,
+                  lag = 3,
+                  r = 1,
+                  include = "none",
+                  estim = "ML",
+                  LRinclude = "const")
+
+# Display estimation results
+summary(vec_model)
+```
+
+
